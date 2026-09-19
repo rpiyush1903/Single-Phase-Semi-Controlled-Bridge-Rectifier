@@ -1,0 +1,93 @@
+/*
+ * Robust Half-Wave Phase-Controlled Rectifier Code
+ 
+
+ *
+ * This code controls ONE thyristor to test your circuit.
+ * It uses a FIXED firing angle that you set in the code.
+ *
+ * HARDWARE CONNECTIONS:
+ * - Pin 2 (Interrupt 0): ZCD Optocoupler Output
+ * - Pin 9: Output to TLP7920 Gate Driver
+ *
+ */
+
+//
+// Set your desired firing angle, in DEGREES (0-180)
+// 0   = Full Power (for this half-wave)
+// 90  = Half Power
+// 180 = No Power
+//
+const int FIRING_ANGLE_DEGREES = 0;
+// ************************************************
+
+
+// --- Pin Definitions ---
+#define ZCD_PIN 2       // ZCD Input (MUST be Interrupt 0)
+#define GATE_PIN 9      // Gate Pulse Output to TLP7920
+
+// --- Timing Constants (for 50Hz AC) ---
+// A 50Hz AC wave has a 10,000 microsecond (10ms) half-cycle.
+#define HALF_CYCLE_US 10000
+#define MIN_DELAY_US 100    // A small delay (0 degrees)
+#define MAX_DELAY_US 9900   // Max delay (180 degrees)
+#define PULSE_WIDTH_US 50   // 50us pulse is all it takes
+
+// --- Global Volatile Flag ---
+
+volatile bool zcd_Flag = false;
+
+void setup() {
+  // Set pin modes
+  pinMode(GATE_PIN, OUTPUT);
+  pinMode(ZCD_PIN, INPUT_PULLUP); // Use PULLUP for optocoupler
+
+  // Ensure gate is off at startup
+  digitalWrite(GATE_PIN, LOW);
+
+  // --- Attach the ZCD Interrupt ---
+  // We attach the 'onZeroCross' function to Interrupt 0 (Pin 2).
+  // It will trigger on the RISING edge of the ZCD pulse.
+  // This RISING edge marks the start of the positive AC half-cycle.
+  attachInterrupt(digitalPinToInterrupt(ZCD_PIN), onZeroCross, RISING);
+}
+
+
+/*
+ * This is the Interrupt Service Routine (ISR).
+ * It runs *instantly* when the ZCD pulse arrives.
+ */
+void onZeroCross() {
+  zcd_Flag = true;
+}
+
+
+/*
+ * The main loop() does all the real work.
+ */
+void loop() {
+  
+  // Check if the ZCD "flag" has been raised by the interrupt
+  if (zcd_Flag) {
+    
+  
+    zcd_Flag = false;
+
+    // 2. Map our fixed ANGLE (0-180) to a DELAY (100-9900 us)
+    // We use 'long' for safety with big numbers.
+    long firing_delay_us = map(FIRING_ANGLE_DEGREES, 0, 180, MIN_DELAY_US, MAX_DELAY_US);
+
+    // 3. Wait for the calculated delay time
+    // This delay starts from the zero crossing.
+    delayMicroseconds(firing_delay_us);
+
+    // 4. Fire the thyristor gate!
+    // We send a very short 50us pulse.
+    digitalWrite(GATE_PIN, HIGH);
+    delayMicroseconds(PULSE_WIDTH_US);
+    digitalWrite(GATE_PIN, LOW);
+  }
+  
+ 
+ 
+}
