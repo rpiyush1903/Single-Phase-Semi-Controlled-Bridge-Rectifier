@@ -1,0 +1,102 @@
+/*
+ * =======================================================
+ * Robust FULL-WAVE Phase-Controlled Rectifier Code
+ * =======================================================
+ *
+ * This code controls TWO thyristors to
+ * control BOTH the positive and negative halves of the AC wave.
+ *
+ * This gives us full 0% to 100% power control.
+ *
+ *
+ * HARDWARE CONNECTIONS:
+ * - Pin 2 (Interrupt 0): ZCD Optocoupler Output
+ * - Pin A0: Potentiometer Wiper (for firing angle)
+ * - Pin 9: Output to BOTH TLP7920 Gate Drivers
+ *
+ */
+
+// --- Pin Definitions ---
+#define ZCD_PIN 2       // ZCD Input (MUST be Interrupt 0)
+#define POT_PIN A0      // Potentiometer
+#define GATE_PIN 9      // Gate Pulse Output to TLP7920
+
+// --- Timing Constants (for 50Hz AC) ---
+// A 50Hz AC wave has a half-cycle of 10,000 microseconds (10ms).
+#define HALF_CYCLE_US 10000
+#define MIN_DELAY_US 100    // Min delay (don't fire at 0)
+#define MAX_DELAY_US 9900   
+#define PULSE_WIDTH_US 50   
+
+// --- Global Volatile Flag ---
+
+void setup() {
+  // Set pin modes
+  pinMode(GATE_PIN, OUTPUT);
+  pinMode(POT_PIN, INPUT);
+  pinMode(ZCD_PIN, INPUT_PULLUP); // Use PULLUP for optocoupler
+
+  // Ensure gate is off at startup
+  digitalWrite(GATE_PIN, LOW);
+
+  // --- Attach the ZCD Interrupt ---
+  // This makes the code fire every 10ms.
+  attachInterrupt(digitalPinToInterrupt(ZCD_PIN), onZeroCross, CHANGE);
+}
+
+
+/*
+ * This is the Interrupt Service Routine (ISR).
+ * It runs *instantly* when the ZCD pulse arrives
+ * (both rising and falling edges).
+ *
+ * All we do here is "raise the flag." This is very fast
+ * and very safe.
+ */
+void onZeroCross() {
+  zcd_Flag = true;
+}
+
+
+/*
+ * The main loop() does all the real work.
+ * The logic is IDENTICAL to the half-wave version,
+ * but now it runs TWICE as often (every 10ms).
+ */
+void loop() {
+  
+  // Check if the ZCD "flag" has been raised by the interrupt
+  if (zcd_Flag) {
+    
+    // 1. Lower the flag.
+    // This is important so the code only runs ONCE per
+    // zero crossing.
+    zcd_Flag = false;
+
+    // 2. Read the potentiometer to get the angle
+    // (Value from 0 to 1023)
+    int pot_value = analogRead(POT_PIN);
+
+    // 3. Map the pot value to our firing delay time
+    // We map 0-1023 to 100us-9900us
+    // A low pot value (0) = low delay = HIGH power.
+    // A high pot value (1023) = high delay = LOW power.
+    int firing_delay = map(pot_value, 0, 1023, MIN_DELAY_US, MAX_DELAY_US);
+
+    // 4. Wait for the calculated delay time
+    // This delay starts from the zero crossing.m
+    delayMicroseconds(firing_delay);mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm
+
+    // 5. Fire the thyristor gate!
+    // We send a very short 50us pulse to Pin 9.
+    // This ONE pin is connected to BOTH TLP7920 drivers.
+    // The thyristors themselves will "know" which one
+    // should fire (only the forward-biased one will turn on).
+    digitalWrite(GATE_PIN, HIGH);
+    delayMicroseconds(PULSE_WIDTH_US);
+    digitalWrite(GATE_PIN, LOW);
+  }
+  
+  // The loop repeats. It will do nothing until the *next*
+  // ZCD interrupt (which is only 10ms away).
+}
